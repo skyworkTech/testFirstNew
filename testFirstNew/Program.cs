@@ -46,12 +46,27 @@ while (true)
     // 创建一个新的上下文
     var context = await browser.NewContextAsync();
     var page = await context.NewPageAsync();
+    try
+    {
+        // 前往網頁
+        await page.GotoAsync(targetUrl);
+    }
+    catch (TaskCanceledException)
+    {
+        // 捕捉 TaskCanceledException 異常，表示等待時間已經超過 60 秒
+        Console.WriteLine("等待超時");
 
-    // 前往網頁
-    await page.GotoAsync(targetUrl);
+        //過三秒後傳送螢幕截圖
+        await page.WaitForTimeoutAsync(3500);
+        // 截取屏幕
+        await page.ScreenshotAsync(new PageScreenshotOptions { Path = "screen.png" });
+        await using var stream = System.IO.File.OpenRead("screen.png");
 
-    // 等待兩秒
-    await page.WaitForTimeoutAsync(2000);
+        // 送出訊息圖片
+        SendNotificationAsync(notifyBaseUrl, count, userid);
+    }
+        // 等待兩秒
+        await page.WaitForTimeoutAsync(2000);
 
     // 按下按鈕 等待轉指
     await page.ClickAsync("h6.login");
@@ -88,7 +103,7 @@ while (true)
         await Task.WhenAny(
             page.WaitForNavigationAsync(),
             page.ClickAsync("button"),
-            Task.Delay(60000)
+            Task.Delay(30000)
         );
     }
     catch (TaskCanceledException)
