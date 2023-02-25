@@ -82,11 +82,29 @@ while (true)
     // 等待三秒
     await page.WaitForTimeoutAsync(2000);
 
-    // 點擊按鈕
-    await Task.WhenAll(
-        page.WaitForNavigationAsync(),
-        page.ClickAsync("button")
-    );
+    // 等待 60 秒或直到發生導航事件或點擊事件
+    try
+    {
+        await Task.WhenAny(
+            page.WaitForNavigationAsync(),
+            page.ClickAsync("button"),
+            Task.Delay(60000)
+        );
+    }
+    catch (TaskCanceledException)
+    {
+        // 捕捉 TaskCanceledException 異常，表示等待時間已經超過 60 秒
+        Console.WriteLine("等待超時");
+
+        //過三秒後傳送螢幕截圖
+        await page.WaitForTimeoutAsync(3500);
+        // 截取屏幕
+        await page.ScreenshotAsync(new PageScreenshotOptions { Path = "screen.png" });
+        await using var stream = System.IO.File.OpenRead("screen.png");
+
+        // 送出訊息圖片
+        SendNotificationAsync(notifyBaseUrl, count, userid);
+    }
 
 
     // 按下按鈕 等待轉指
@@ -112,35 +130,15 @@ while (true)
     {
         Console.WriteLine(findString + "不見了");
 
-        //傳送基本次數
-        var apiUri = new Uri(notifyBaseUrl+"sendFirst.php?count=" + count + "&userid=" + userid);
-
-        var requestBody = new StringContent("", Encoding.UTF8, "application/json");
-
-        using (var httpClient = new HttpClient())
-        {
-            var httpResponse = await httpClient.PostAsync(apiUri, requestBody);
-
-            if (!httpResponse.IsSuccessStatusCode)
-            {
-                // Handle error response
-            }
-        }
-
         //過三秒後傳送螢幕截圖
         await page.WaitForTimeoutAsync(3500);
         // 截取屏幕
         await page.ScreenshotAsync(new PageScreenshotOptions { Path = "screen.png" });
         await using var stream = System.IO.File.OpenRead("screen.png");
 
-        // 將圖片上傳至指定網址
-        using (HttpClient httpClient = new HttpClient())
-        {
-            MultipartFormDataContent formData = new MultipartFormDataContent();
-            formData.Add(new StreamContent(stream), "img", "screenshot.png");
-            HttpResponseMessage response = await httpClient.PostAsync(notifyBaseUrl + "imgSend.php", formData);
-            string result = await response.Content.ReadAsStringAsync();
-        }
+        // 送出訊息圖片
+        SendNotificationAsync(notifyBaseUrl,count,userid);
+
         break;
     }
     //如果跑100次 則顯示一下在 console.log
@@ -152,6 +150,36 @@ while (true)
     await page.CloseAsync();
     await context.CloseAsync();
     await browser.CloseAsync();
+}
+
+async Task SendNotificationAsync(string notifyBaseUrl, int count, string userId)
+{
+    // 建立 API 請求
+    var apiUri = new Uri(notifyBaseUrl + "sendFirst.php?count=" + count + "&userid=" + userId);
+    var requestBody = new StringContent("", Encoding.UTF8, "application/json");
+
+    using (var httpClient = new HttpClient())
+    {
+        // 發送 API 請求
+        var httpResponse = await httpClient.PostAsync(apiUri, requestBody);
+
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            // 處理錯誤回應
+        }
+    }
+
+    // 讀取截圖檔案，準備上傳
+    await using var stream = System.IO.File.OpenRead("screen.png");
+
+    // 上傳截圖至指定網址
+    using (HttpClient httpClient = new HttpClient())
+    {
+        MultipartFormDataContent formData = new MultipartFormDataContent();
+        formData.Add(new StreamContent(stream), "img", "screenshot.png");
+        HttpResponseMessage response = await httpClient.PostAsync(notifyBaseUrl + "imgSend.php", formData);
+        string result = await response.Content.ReadAsStringAsync();
+    }
 }
 
 Console.WriteLine($"迴圈運行了 {count} 次。");
